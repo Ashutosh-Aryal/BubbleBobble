@@ -11,8 +11,11 @@
 #include "Camera/CameraComponent.h"
 #include "PaperFlipbook.h"
 #include "Bubble.h"
+#include "Enemy.h"
 
 DEFINE_LOG_CATEGORY_STATIC(SideScrollerCharacter, Log, All);
+
+ABubbleBobble_V2Character* ABubbleBobble_V2Character::s_MainCharacter = nullptr;
 
 //////////////////////////////////////////////////////////////////////////
 // ABubbleBobble_V2Character
@@ -60,6 +63,7 @@ ABubbleBobble_V2Character::ABubbleBobble_V2Character()
 
 	// Lock character motion onto the XZ plane, so the character can't move in or out of the screen
 	GetCharacterMovement()->bConstrainToPlane = true;
+
 	GetCharacterMovement()->SetPlaneConstraintNormal(FVector(0.0f, -1.0f, 0.0f));
 
 	// Behave like a traditional 2D platformer character, with a flat bottom instead of a curved capsule bottom
@@ -76,6 +80,15 @@ ABubbleBobble_V2Character::ABubbleBobble_V2Character()
 	// Enable replication on the Sprite component so animations show up when networked
 	GetSprite()->SetIsReplicated(true);
 	bReplicates = true;
+
+	s_MainCharacter = this;
+}
+
+void ABubbleBobble_V2Character::BeginPlay() {
+	Super::BeginPlay();
+
+	m_SpawnLocation = GetActorLocation();
+	SpawnActor<AEnemy>();
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -90,7 +103,7 @@ void ABubbleBobble_V2Character::UpdateAnimation()
 
 		if (!m_HasShotBubble) {
 			GetSprite()->SetFlipbook(ShootAnimation);
-			SpawnBubble();
+			SpawnActor<ABubble>();
 			m_HasShotBubble = true;
 		}
 	}
@@ -141,16 +154,15 @@ void ABubbleBobble_V2Character::Shoot() {
 	}
 }
 
-void ABubbleBobble_V2Character::SpawnBubble() {
-
+template <class T>
+void ABubbleBobble_V2Character::SpawnActor() {
 	FActorSpawnParameters fasp;
 	fasp.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 	fasp.bNoFail = true;
 	fasp.Owner = this;
 
-	GetWorld()->SpawnActor<ABubble>(GetActorLocation(), GetActorRotation(), fasp);
+	GetWorld()->SpawnActor<T>(GetActorLocation(), GetActorRotation(), fasp);
 }
-
 
 //////////////////////////////////////////////////////////////////////////
 // Input
@@ -164,8 +176,8 @@ void ABubbleBobble_V2Character::SetupPlayerInputComponent(class UInputComponent*
 	
 	PlayerInputComponent->BindAxis("MoveRight", this, &ABubbleBobble_V2Character::MoveRight);
 
-	PlayerInputComponent->BindTouch(IE_Pressed, this, &ABubbleBobble_V2Character::TouchStarted);
-	PlayerInputComponent->BindTouch(IE_Released, this, &ABubbleBobble_V2Character::TouchStopped);
+	//PlayerInputComponent->BindTouch(IE_Pressed, this, &ABubbleBobble_V2Character::TouchStarted);
+	//PlayerInputComponent->BindTouch(IE_Released, this, &ABubbleBobble_V2Character::TouchStopped);
 }
 
 void ABubbleBobble_V2Character::MoveRight(float Value)
@@ -191,10 +203,7 @@ void ABubbleBobble_V2Character::TouchStopped(const ETouchIndex::Type FingerIndex
 
 void ABubbleBobble_V2Character::UpdateCharacter(float deltaTime)
 {
-	// Update animation to match the motion
-	//UpdateAnimation(deltaTime);
-
-	// Now setup the rotation of the controller based on the direction we are travelling
+	// Setup the rotation of the controller based on the direction we are traveling
 	const FVector PlayerVelocity = GetVelocity();	
 	float TravelDirection = PlayerVelocity.X;
 	// Set the rotation so that the character faces his direction of travel.

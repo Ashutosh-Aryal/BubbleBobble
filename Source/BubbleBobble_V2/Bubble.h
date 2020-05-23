@@ -11,6 +11,11 @@ class BUBBLEBOBBLE_V2_API ABubble : public AActor
 {
 	GENERATED_BODY()
 
+	UFUNCTION()
+	void BeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, 
+		UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
+
+	bool m_HasReset = true;
 public:	
 	// Sets default values for this actor's properties
 	ABubble();
@@ -47,10 +52,12 @@ protected:
 	class UPaperFlipbookComponent* m_PaperFlipbookComponent = nullptr;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Collisions)
-	class USphereComponent* m_CollisionComponent;
+	class USphereComponent* m_CollisionComponent = nullptr;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Movement)
-	class UProjectileMovementComponent* m_MoveComponent;
+	class UProjectileMovementComponent* m_MoveComponent = nullptr;
+
+	void SpawnNewEnemy();
 
 public:	
 	// Called every frame

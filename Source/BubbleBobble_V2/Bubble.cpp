@@ -5,6 +5,8 @@
 #include "PaperFlipbookComponent.h"
 #include "PaperFlipbook.h"
 #include "GameFramework/ProjectileMovementComponent.h"
+#include "Components/CapsuleComponent.h"
+#include "Enemy.h"
 
 UPaperFlipbook* ABubble::s_AnimAssets[BubbleType::TotalBubbleTypes] = { nullptr, nullptr, nullptr, nullptr };
 
@@ -17,7 +19,7 @@ const TCHAR* ABubble::s_AssetNames[BubbleType::TotalBubbleTypes] = {
 
 const FVector ABubble::FORWARD_VELOCITY = 1000.0f * FVector::ForwardVector;
 const FVector ABubble::UPWARD_VELOCITY = 60.0f * FVector::UpVector;
-const float ABubble::SPHERE_RADIUS = 9.0f;
+const float ABubble::SPHERE_RADIUS = 8.0f;
 const FVector ABubble::SCALE_SIZE = FVector(4.0f, 4.0f, 4.0f);
 const float ABubble::TIMER_IF_COLLIDES_WITH_ENEMY = 15.0f;
 
@@ -28,7 +30,7 @@ ABubble::ABubble()
 	PrimaryActorTick.bCanEverTick = true;
 
 	m_CollisionComponent = CreateDefaultSubobject<USphereComponent>(TEXT("Collision"));
-	m_CollisionComponent->SetSphereRadius(SPHERE_RADIUS * SCALE_SIZE.X);
+	m_CollisionComponent->SetSphereRadius(SPHERE_RADIUS);
 	m_CollisionComponent->SetCollisionProfileName("Bubble");
 	SetRootComponent(m_CollisionComponent);
 
@@ -49,6 +51,7 @@ ABubble::ABubble()
 	RootComponent->SetWorldScale3D(SCALE_SIZE);
 
 	bReplicates = true;
+	m_CollisionComponent->OnComponentBeginOverlap.AddDynamic(this, &ABubble::BeginOverlap);
 }
 
 UPaperFlipbook* ABubble::GetAsset(BubbleType bt) {
@@ -67,7 +70,32 @@ UPaperFlipbook* ABubble::GetAsset(BubbleType bt) {
 void ABubble::BeginPlay()
 {
 	Super::BeginPlay();
-	// Handle collision here. If collides, immediately pop bubble & send enemy actor flying
+}
+
+void ABubble::BeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
+	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult) {
+
+	if (OtherActor->IsA<AEnemy>() && OtherComp->IsA<UCapsuleComponent>() && m_HasReset && m_BubbleType == BubbleType::ShotBubble) {
+		m_HasReset = false;
+		OtherActor->Destroy();
+		SpawnNewEnemy();
+		m_BubbleType = BubbleType::FloatingBubbleWithEnemy;
+		m_AnimationTimer = 10.0f;
+	}
+}
+
+void ABubble::SpawnNewEnemy() {
+	FActorSpawnParameters fasp;
+	fasp.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	fasp.bNoFail = true;
+	fasp.Owner = this;
+
+	auto mainCharacter = GetWorld()->GetFirstPlayerController()->GetPawn();
+
+	FVector location = mainCharacter->GetActorLocation();
+	location.X += 100.0f;
+
+	GetWorld()->SpawnActor<AEnemy>(location, mainCharacter->GetActorRotation(), fasp);
 }
 
 // Called every frame
@@ -93,7 +121,11 @@ void ABubble::Tick(float DeltaTime)
 			m_MoveComponent->SetVelocityInLocalSpace(FORWARD_VELOCITY);
 		}
 	}
+	else if (m_BubbleType == BubbleType::FloatingBubbleWithEnemy) {
+		m_MoveComponent->SetVelocityInLocalSpace(UPWARD_VELOCITY);
+	}
 
 	m_PaperFlipbookComponent->SetFlipbook(m_FlipbookAnims[m_BubbleType]);
 	m_PaperFlipbookComponent->Play();
+	m_HasReset = true;
 }

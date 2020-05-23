@@ -31,6 +31,7 @@ class ABubbleBobble_V2Character : public APaperCharacter
 
 	UTextRenderComponent* TextComponent;
 	virtual void Tick(float DeltaSeconds) override;
+	static ABubbleBobble_V2Character* s_MainCharacter;
 
 protected:
 	// The animation to play while running around
@@ -72,15 +73,21 @@ protected:
 
 	// APawn interface
 	virtual void SetupPlayerInputComponent(class UInputComponent* InputComponent) override;
+
+	virtual void BeginPlay() override;
 	// End of APawn interface
 
+	FVector m_SpawnLocation = FVector::ZeroVector;
 	const float MAX_SHOOT_ANIM_TIMER = 0.25f;
+	
 	float m_ShootAnimTimer = 0.0f;
 	bool m_shouldShoot = false;
 	bool m_HasShotBubble = false;
 
+	template <class T>
+	void SpawnActor();
+
 	void Shoot();
-	void SpawnBubble();
 
 public:
 	ABubbleBobble_V2Character();
