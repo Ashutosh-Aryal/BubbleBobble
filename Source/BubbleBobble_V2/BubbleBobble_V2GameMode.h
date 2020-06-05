@@ -16,6 +16,7 @@ UCLASS(minimalapi)
 class ABubbleBobble_V2GameMode : public AGameModeBase
 {
 	GENERATED_BODY()
+
 public:
 	ABubbleBobble_V2GameMode();
 };

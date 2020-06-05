@@ -12,10 +12,10 @@
 #include "PaperFlipbook.h"
 #include "Bubble.h"
 #include "Enemy.h"
+#include "Blueprint/UserWidget.h"
+#include "Kismet/KismetSystemLibrary.h"
 
 DEFINE_LOG_CATEGORY_STATIC(SideScrollerCharacter, Log, All);
-
-ABubbleBobble_V2Character* ABubbleBobble_V2Character::s_MainCharacter = nullptr;
 
 //////////////////////////////////////////////////////////////////////////
 // ABubbleBobble_V2Character
@@ -81,14 +81,40 @@ ABubbleBobble_V2Character::ABubbleBobble_V2Character()
 	GetSprite()->SetIsReplicated(true);
 	bReplicates = true;
 
-	s_MainCharacter = this;
+	GetCapsuleComponent()->SetGenerateOverlapEvents(true);
+	GetCapsuleComponent()->OnComponentBeginOverlap.AddDynamic(this, &ABubbleBobble_V2Character::BeginOverlap);
 }
+
+void ABubbleBobble_V2Character::BeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult) {
+	
+	if (OtherActor->IsA<ABubble>()) {
+		ABubble* bubble = Cast<ABubble>(OtherActor);
+
+		if (bubble->GetBubbleType() != ABubble::ShotBubble) {
+			m_PointsEarned += Cast<ABubble>(OtherActor)->Pop(0);
+		}
+	}
+
+}
+
+void ABubbleBobble_V2Character::LoseLife() {
+
+	if (m_DeathTimer > 0.0f) { return;  }
+
+	m_NumLives -= 1;
+	GetSprite()->SetFlipbook(DeathAnimation);
+	m_DeathTimer = 2.0f;
+};
 
 void ABubbleBobble_V2Character::BeginPlay() {
 	Super::BeginPlay();
 
 	m_SpawnLocation = GetActorLocation();
-	SpawnActor<AEnemy>();
+
+	FVector enemySpawnLocation = GetActorLocation();
+	enemySpawnLocation.X -= 350.0f;
+
+	SpawnActor<AEnemy>(enemySpawnLocation);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -137,6 +163,22 @@ void ABubbleBobble_V2Character::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
+	if (m_NumLives < 0) {
+		TEnumAsByte<EQuitPreference::Type> QuitPreference(EQuitPreference::Quit);
+		UKismetSystemLibrary::QuitGame(GetWorld(), GetWorld()->GetFirstPlayerController(), QuitPreference, false);
+	}
+
+	if (m_DeathTimer > 0.0f) {
+		m_DeathTimer -= DeltaSeconds; 
+
+		if (m_DeathTimer <= 0.0f) {
+
+			SetActorLocation(m_SpawnLocation, false, nullptr, ETeleportType::TeleportPhysics);
+			GetSprite()->SetFlipbook(IdleAnimation);
+		}
+		return;
+	}
+
 	if (m_shouldShoot) {
 		m_ShootAnimTimer = MAX_SHOOT_ANIM_TIMER;
 		m_shouldShoot = false;
@@ -155,13 +197,17 @@ void ABubbleBobble_V2Character::Shoot() {
 }
 
 template <class T>
-void ABubbleBobble_V2Character::SpawnActor() {
+void ABubbleBobble_V2Character::SpawnActor(FVector pSpawnLocation) {
 	FActorSpawnParameters fasp;
 	fasp.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 	fasp.bNoFail = true;
 	fasp.Owner = this;
 
-	GetWorld()->SpawnActor<T>(GetActorLocation(), GetActorRotation(), fasp);
+	if (pSpawnLocation.Equals(FVector::ZeroVector)) {
+		pSpawnLocation = GetActorLocation();
+	}
+
+	GetWorld()->SpawnActor<T>(pSpawnLocation, GetActorRotation(), fasp);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -170,19 +216,32 @@ void ABubbleBobble_V2Character::SpawnActor() {
 void ABubbleBobble_V2Character::SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent)
 {
 	// Note: the 'Jump' action and the 'MoveRight' axis are bound to actual keys/buttons/sticks in DefaultInput.ini (editable from Project Settings..Input)
-	PlayerInputComponent->BindAction("Jump", IE_Pressed, this, &ACharacter::Jump);
-	PlayerInputComponent->BindAction("Jump", IE_Released, this, &ACharacter::StopJumping);
+	PlayerInputComponent->BindAction("Jump", IE_Pressed, this, &ABubbleBobble_V2Character::PlayerJump);
+	PlayerInputComponent->BindAction("Jump", IE_Released, this, &ABubbleBobble_V2Character::PlayerStopJumping);
 	PlayerInputComponent->BindAction("ShootBubble", IE_Pressed, this, &ABubbleBobble_V2Character::Shoot);
 	
 	PlayerInputComponent->BindAxis("MoveRight", this, &ABubbleBobble_V2Character::MoveRight);
 
-	//PlayerInputComponent->BindTouch(IE_Pressed, this, &ABubbleBobble_V2Character::TouchStarted);
-	//PlayerInputComponent->BindTouch(IE_Released, this, &ABubbleBobble_V2Character::TouchStopped);
+	PlayerInputComponent->BindTouch(IE_Pressed, this, &ABubbleBobble_V2Character::TouchStarted);
+	PlayerInputComponent->BindTouch(IE_Released, this, &ABubbleBobble_V2Character::TouchStopped);
+}
+
+void ABubbleBobble_V2Character::PlayerJump() {
+	
+	if (m_DeathTimer > 0.0f) { return;  }
+	Jump();
+}
+
+void ABubbleBobble_V2Character::PlayerStopJumping() {
+	if (m_DeathTimer > 0.0f) { return; }
+	StopJumping();
 }
 
 void ABubbleBobble_V2Character::MoveRight(float Value)
 {
 	/*UpdateChar();*/
+
+	if (m_DeathTimer > 0.0f) { return; }
 
 	// Apply the input to the character motion
 	AddMovementInput(FVector(1.0f, 0.0f, 0.0f), Value);
@@ -192,12 +251,18 @@ void ABubbleBobble_V2Character::TouchStarted(const ETouchIndex::Type FingerIndex
 {
 
 	// Jump on any touch
+
+	if (m_DeathTimer > 0.0f) { return;  }
+
 	Jump();
 }
 
 void ABubbleBobble_V2Character::TouchStopped(const ETouchIndex::Type FingerIndex, const FVector Location)
 {
 	// Cease jumping once touch stopped
+
+	if (m_DeathTimer > 0.0f) { return; }
+
 	StopJumping();
 }
 

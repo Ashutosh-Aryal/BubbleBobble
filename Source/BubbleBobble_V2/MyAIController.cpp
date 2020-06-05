@@ -38,9 +38,9 @@ void AMyAIController::OnPossess(APawn* InPawn) {
 
 	AEnemy* enemy = Cast<AEnemy>(InPawn);
 
-	if (enemy && enemy->m_BehaviorTree) {
-		m_BlackboardComponent->InitializeBlackboard(*enemy->m_BehaviorTree->BlackboardAsset);
+	if (enemy && AEnemy::s_BehaviorTree) {
+		m_BlackboardComponent->InitializeBlackboard(*AEnemy::s_BehaviorTree->BlackboardAsset);
 		m_EnemyID = m_BlackboardComponent->GetKeyID(BLACKBOARD_KEY);
-		m_BehaviorTreeComponent->StartTree(*enemy->m_BehaviorTree);
+		m_BehaviorTreeComponent->StartTree(*AEnemy::s_BehaviorTree);
 	} 
 }

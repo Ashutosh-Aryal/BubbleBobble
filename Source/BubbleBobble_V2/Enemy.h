@@ -11,19 +11,55 @@ class BUBBLEBOBBLE_V2_API AEnemy : public APaperCharacter
 {
 	GENERATED_BODY()
 
+	static const float MOVEMENT_SPEED;
 	static const FVector SCALE_SIZE;
+	FVector m_LastLocation = FVector::ZeroVector;
+	float m_LastScalar = 0;
+	bool m_JustJumped = false;
+	bool m_AllowJumpingLeft = false;
+	bool m_AllowJumpingRight = false;
 	void Setup();
+
+	UFUNCTION()
+	void BeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
 public:
 	// Sets default values for this character's properties
 	AEnemy();
-
-protected:
-
+	static const float GetMovementSpeed() { return MOVEMENT_SPEED; };
 	enum EnemyType {
-		Normal = 0, 
-		Enraged = 1, 
+		Normal = 0,
+		Enraged = 1,
 		TotalEnemyTypes = 2
 	};
+
+	static class UPaperFlipbook* GetAnimation(EnemyType et) {
+		return s_AnimAssets[et];
+	};
+
+	const EnemyType GetEnemyType() const { return m_EnemyType; };
+	void SetEnemyType(EnemyType et) {
+		m_EnemyType = et;
+	};
+
+	const bool HasJustJumped() const {
+		return m_JustJumped;
+	};
+	void SetJustJumped(bool bJustJumped) {
+		m_JustJumped = bJustJumped;
+	}
+
+	bool GetJumping(bool getJumpingLeft) {
+		if (getJumpingLeft) { return m_AllowJumpingLeft; };
+		return m_AllowJumpingRight;
+	}
+
+	UFUNCTION(BlueprintCallable, Category = "HandleJumps")
+	void SetJumping(bool pAllowLeftJumps, bool pAllowRightJumps) {
+		m_AllowJumpingLeft = pAllowLeftJumps;
+		m_AllowJumpingRight = pAllowRightJumps;
+	};
+
+protected:
 
 	EnemyType m_EnemyType = EnemyType::Normal;
 
@@ -41,23 +77,19 @@ protected:
 
 	class AMyAIController* m_AIController;
 	class ABubbleBobble_V2Character* m_TargetCharacter;
-	FVector m_SpawnLocation = FVector::ZeroVector;
-	const float HORIZONTAL_SPAWN_DISTANCE_FROM_CHARACTER = 10.0f;
+	const float HORIZONTAL_SPAWN_DISTANCE_FROM_CHARACTER = 350.0f;
 
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
 
-	virtual void SetupPlayerInputComponent(class UInputComponent* InputComponent) override;
 	void MoveRight(float Value);
-	void UpdateCharacter();
-	void UpdateAnimation();
 
-	class AMyAIController* isAIControllerInUWorld();
+	void UpdateSpriteRotation();
+	void UpdateAnimation();
+	void UpdateDirection();
 
 public:	
-	// Called every frame
-	virtual void Tick(float DeltaTime) override;
-
-	UPROPERTY(EditAnywhere, Category = "Behavior Tree")
-	class UBehaviorTree* m_BehaviorTree = nullptr;
+	static class UBehaviorTree* s_BehaviorTree;
+	static FVector s_SpawnLocation;
+	static bool s_isFirstEnemy;
 };

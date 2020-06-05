@@ -21,6 +21,12 @@ class ABubbleBobble_V2Character : public APaperCharacter
 {
 	GENERATED_BODY()
 
+		float wtf = 0;
+
+	UFUNCTION()
+	void BeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
+			UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
+
 	/** Side view camera */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category=Camera, meta=(AllowPrivateAccess="true"))
 	class UCameraComponent* SideViewCameraComponent;
@@ -31,7 +37,16 @@ class ABubbleBobble_V2Character : public APaperCharacter
 
 	UTextRenderComponent* TextComponent;
 	virtual void Tick(float DeltaSeconds) override;
-	static ABubbleBobble_V2Character* s_MainCharacter;
+
+	UPROPERTY(EditAnywhere, Category = "NumLives")
+	int m_NumLives = 3;
+
+	int m_PointsEarned = 0;
+
+	float m_DeathTimer = 0.0f;
+
+	void PlayerJump();
+	void PlayerStopJumping();
 
 protected:
 	// The animation to play while running around
@@ -85,12 +100,29 @@ protected:
 	bool m_HasShotBubble = false;
 
 	template <class T>
-	void SpawnActor();
+	void SpawnActor(FVector pSpawnLocation = FVector::ZeroVector);
 
 	void Shoot();
 
 public:
 	ABubbleBobble_V2Character();
+
+	UFUNCTION(BlueprintCallable, Category="NumLives")
+	int getNumLives() const {
+		return m_NumLives;
+	};
+
+	UFUNCTION(BlueprintCallable, Category="NumLives")
+	void setNumLives(const int& pNumLives) {
+		m_NumLives = pNumLives;
+	};
+
+	UFUNCTION(BlueprintCallable, Category = "NumPoints")
+	int getNumPoints() const {
+		return m_PointsEarned;
+	};
+
+	void LoseLife();
 
 	/** Returns SideViewCameraComponent subobject **/
 	FORCEINLINE class UCameraComponent* GetSideViewCameraComponent() const { return SideViewCameraComponent; }

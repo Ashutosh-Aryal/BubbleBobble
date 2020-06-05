@@ -22,6 +22,7 @@ const FVector ABubble::UPWARD_VELOCITY = 60.0f * FVector::UpVector;
 const float ABubble::SPHERE_RADIUS = 8.0f;
 const FVector ABubble::SCALE_SIZE = FVector(4.0f, 4.0f, 4.0f);
 const float ABubble::TIMER_IF_COLLIDES_WITH_ENEMY = 15.0f;
+TArray<ABubble*> ABubble::s_ActiveBubbles = TArray<ABubble*>();
 
 // Sets default values
 ABubble::ABubble()
@@ -70,6 +71,7 @@ UPaperFlipbook* ABubble::GetAsset(BubbleType bt) {
 void ABubble::BeginPlay()
 {
 	Super::BeginPlay();
+	s_ActiveBubbles.Add(this);
 }
 
 void ABubble::BeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
@@ -78,24 +80,83 @@ void ABubble::BeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* Oth
 	if (OtherActor->IsA<AEnemy>() && OtherComp->IsA<UCapsuleComponent>() && m_HasReset && m_BubbleType == BubbleType::ShotBubble) {
 		m_HasReset = false;
 		OtherActor->Destroy();
-		SpawnNewEnemy();
+
+		FVector spawnLocation = AEnemy::s_SpawnLocation;
+		FVector currentPlayerLocation = GetWorld()->GetFirstPlayerController()->GetPawn()->GetActorLocation();
+		float distance = (currentPlayerLocation - spawnLocation).Size();
+
+		if (distance < 350.0f) {
+			spawnLocation.X += 350.0f;
+			distance = (currentPlayerLocation - spawnLocation).Size();
+		}
+
+		SpawnNewEnemy(spawnLocation);
 		m_BubbleType = BubbleType::FloatingBubbleWithEnemy;
 		m_AnimationTimer = 10.0f;
 	}
 }
 
-void ABubble::SpawnNewEnemy() {
+void ABubble::SpawnNewEnemy(FVector location, bool bSpawnEnragedEnemy) {
+	
 	FActorSpawnParameters fasp;
 	fasp.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 	fasp.bNoFail = true;
-	fasp.Owner = this;
 
-	auto mainCharacter = GetWorld()->GetFirstPlayerController()->GetPawn();
+	AEnemy* enemy = GetWorld()->SpawnActor<AEnemy>(location, GetActorRotation(), fasp);
 
-	FVector location = mainCharacter->GetActorLocation();
-	location.X += 100.0f;
+	if (bSpawnEnragedEnemy) {
+		enemy->SetEnemyType(AEnemy::Enraged);
+	}
+}
 
-	GetWorld()->SpawnActor<AEnemy>(location, mainCharacter->GetActorRotation(), fasp);
+int ABubble::Pop(float poppedBubblesCount) {
+
+	s_ActiveBubbles.Remove(this);
+
+	if (poppedBubblesCount != -1) {
+
+		ABubble* adjacentBubble = nullptr;
+
+		float epsilon = 0.5f; // Set epsilon val here
+		int x = 0;
+
+		for (; x < s_ActiveBubbles.Num(); ++x) {
+
+			if (!s_ActiveBubbles[x] || s_ActiveBubbles[x]->IsActorBeingDestroyed()) { break; }
+			FVector distanceVector = (GetActorLocation() - s_ActiveBubbles[x]->GetActorLocation());
+			FVector2D releventCoordinates = FVector2D(distanceVector.X, distanceVector.Z);
+			float distance = releventCoordinates.Size();
+
+			if (distance - SPHERE_RADIUS <= epsilon) {
+				adjacentBubble = s_ActiveBubbles[x]; break;
+			}
+		}
+
+		if (x != s_ActiveBubbles.Num()) {
+			s_ActiveBubbles.RemoveAt(x);
+		}
+
+		bool shouldIncrementPoints = GetBubbleType() == FloatingBubbleWithEnemy;
+		m_BubbleType = BubbleType::PoppedBubble;
+		int pointsMultiplier = poppedBubblesCount + 1;
+		const int ADDED_POINTS = pointsMultiplier * POINTS_PER_BUBBLE;
+
+		Destroy();
+		if (!adjacentBubble) {
+			return (shouldIncrementPoints) ? ADDED_POINTS : 0;
+		}
+		
+		return (shouldIncrementPoints) ? 
+			adjacentBubble->Pop(++poppedBubblesCount) + ADDED_POINTS : 
+			adjacentBubble->Pop(poppedBubblesCount);
+
+	} else if (m_BubbleType == FloatingBubbleWithEnemy) {
+		SpawnNewEnemy(GetActorLocation(), true);
+	}
+
+	m_BubbleType = BubbleType::PoppedBubble;
+	Destroy();
+	return 0;
 }
 
 // Called every frame
@@ -108,8 +169,7 @@ void ABubble::Tick(float DeltaTime)
 	m_AnimationTimer -= DeltaTime;
 
 	if (m_AnimationTimer <= 0.0f) {
-		m_BubbleType = BubbleType::PoppedBubble;
-		Destroy();
+		Pop();
 	}
 	else if (m_BubbleType == BubbleType::ShotBubble) {
 
@@ -128,4 +188,5 @@ void ABubble::Tick(float DeltaTime)
 	m_PaperFlipbookComponent->SetFlipbook(m_FlipbookAnims[m_BubbleType]);
 	m_PaperFlipbookComponent->Play();
 	m_HasReset = true;
+	m_LastLocation = GetActorLocation();
 }

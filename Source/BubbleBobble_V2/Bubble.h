@@ -16,11 +16,16 @@ class BUBBLEBOBBLE_V2_API ABubble : public AActor
 		UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
 
 	bool m_HasReset = true;
-public:	
+	static const int POINTS_PER_BUBBLE = 100;
+	FVector m_LastLocation = FVector::ZeroVector;
+
+	static TArray<ABubble*> s_ActiveBubbles;
+public:
 	// Sets default values for this actor's properties
 	ABubble();
 
-protected:
+	// Called every frame
+	virtual void Tick(float DeltaTime) override;
 
 	enum BubbleType {
 		ShotBubble = 0,
@@ -29,6 +34,13 @@ protected:
 		PoppedBubble = 3,
 		TotalBubbleTypes = 4
 	};
+
+	const BubbleType GetBubbleType() const { return m_BubbleType; };
+
+
+	int Pop(float poppedBubblesCount = -1);
+
+protected:
 
 	BubbleType m_BubbleType = BubbleType::ShotBubble;
 
@@ -57,10 +69,5 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Movement)
 	class UProjectileMovementComponent* m_MoveComponent = nullptr;
 
-	void SpawnNewEnemy();
-
-public:	
-	// Called every frame
-	virtual void Tick(float DeltaTime) override;
-
+	void SpawnNewEnemy(FVector location, bool bSpawnEnragedEnemy = false);
 };

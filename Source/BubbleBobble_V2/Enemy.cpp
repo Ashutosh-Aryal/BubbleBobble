@@ -10,6 +10,7 @@
 #include "Tasks/AITask.h"
 #include "PaperFlipbook.h"
 #include "BehaviorTree/BehaviorTree.h"
+#include "GameFramework/ProjectileMovementComponent.h"
 
 UPaperFlipbook* AEnemy::s_AnimAssets[EnemyType::TotalEnemyTypes] = { nullptr, nullptr };
 const TCHAR* AEnemy::s_AnimNames[EnemyType::TotalEnemyTypes] = {
@@ -18,18 +19,22 @@ const TCHAR* AEnemy::s_AnimNames[EnemyType::TotalEnemyTypes] = {
 };
 const TCHAR* AEnemy::s_BehaviorTreeName = TEXT("BehaviorTree'/Game/2DSideScrollerCPP/Blueprints/BT_Enemy.BT_Enemy'");
 const FVector AEnemy::SCALE_SIZE = FVector(5.0f, 5.0f, 5.0f);
+const float AEnemy::MOVEMENT_SPEED = 400.0f;
+UBehaviorTree* AEnemy::s_BehaviorTree = nullptr;
+FVector AEnemy::s_SpawnLocation = FVector::ZeroVector;
+bool AEnemy::s_isFirstEnemy = true;
 
 // Sets default values
 AEnemy::AEnemy()
 {
 	// Set this character to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
-	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bCanEverTick = false;
 
 	this->AIControllerClass = AMyAIController::StaticClass();
 	this->AutoPossessAI = EAutoPossessAI::PlacedInWorld;
 
 	auto value = ConstructorHelpers::FObjectFinderOptional<UBehaviorTree>(s_BehaviorTreeName);
-	m_BehaviorTree = value.Get();
+	s_BehaviorTree = value.Get();
 
 	if (!s_AnimAssets[0]) {
 		for (int x = 0; x < EnemyType::TotalEnemyTypes; ++x) {
@@ -43,24 +48,12 @@ AEnemy::AEnemy()
 	RootComponent->SetWorldScale3D(SCALE_SIZE);
 }
 
-void AEnemy::SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent)
-{
-	// Note: the 'Jump' action and the 'MoveRight' axis are bound to actual keys/buttons/sticks in DefaultInput.ini (editable from Project Settings..Input)
-	PlayerInputComponent->BindAction("Jump", IE_Pressed, this, &ACharacter::Jump);
-	PlayerInputComponent->BindAction("Jump", IE_Released, this, &ACharacter::StopJumping);
+void AEnemy::BeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult) {
 
-	PlayerInputComponent->BindAxis("MoveRight", this, &AEnemy::MoveRight);
-
-	//PlayerInputComponent->BindTouch(IE_Pressed, this, &ABubbleBobble_V2Character::TouchStarted);
-	//PlayerInputComponent->BindTouch(IE_Released, this, &ABubbleBobble_V2Character::TouchStopped);
-}
-
-void AEnemy::MoveRight(float Value)
-{
-	/*UpdateChar();*/
-
-	// Apply the input to the character motion
-	AddMovementInput(FVector(1.0f, 0.0f, 0.0f), Value);
+	if (OtherActor->IsA<ABubbleBobble_V2Character>()) {
+		ABubbleBobble_V2Character* character = Cast<ABubbleBobble_V2Character>(OtherActor);
+		character->LoseLife();
+	}
 }
 
 void AEnemy::GetAsset(EnemyType et) {
@@ -71,15 +64,24 @@ void AEnemy::GetAsset(EnemyType et) {
 
 void AEnemy::Setup() {
 
-	GetCapsuleComponent()->SetCapsuleRadius(7.5f);
-	GetCapsuleComponent()->SetCapsuleHalfHeight(7.5f);
+	if (s_isFirstEnemy) {
+		s_SpawnLocation = GetActorLocation();
+		s_isFirstEnemy = false;
+	}
+
+	UCapsuleComponent* Capsule_Component = GetCapsuleComponent();
+
+	Capsule_Component->SetCapsuleRadius(7.5f);
+	Capsule_Component->SetCapsuleHalfHeight(7.5f);
+	Capsule_Component->SetCollisionProfileName(TEXT("OverlapOnlyPawn"));
+	Capsule_Component->OnComponentBeginOverlap.AddDynamic(this, &AEnemy::BeginOverlap);
 
 	UCharacterMovementComponent* Character_Movement = GetCharacterMovement();
 
 	Character_Movement->bOrientRotationToMovement = false;
 	Character_Movement->GravityScale = 2.0f;
 	Character_Movement->AirControl = 0.80f;
-	Character_Movement->JumpZVelocity = 1050.0f;
+	Character_Movement->JumpZVelocity = 1100.0f;
 	Character_Movement->GroundFriction = 3.0f;
 	Character_Movement->MaxWalkSpeed = 600.0f;
 	Character_Movement->MaxFlySpeed = 600.0f;
@@ -91,99 +93,30 @@ void AEnemy::Setup() {
 	GetSprite()->SetIsReplicated(true);
 	bReplicates = true;
 
-	AMyAIController* NewController = isAIControllerInUWorld();
-
-	if (!NewController) {
+	if (!m_AIController) {
 		FActorSpawnParameters SpawnInfo;
 		SpawnInfo.Instigator = GetInstigator();
 		SpawnInfo.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 		SpawnInfo.OverrideLevel = GetLevel();
-		SpawnInfo.ObjectFlags |= RF_Transient;
-		NewController = GetWorld()->SpawnActor<AMyAIController>(AIControllerClass, GetActorLocation(), GetActorRotation(), SpawnInfo);
-		if (NewController != nullptr)
-		{
-			// if successful will result in setting this->Controller 
-			// as part of possession mechanics
-			NewController->Possess(this);
-		}
-	}
-	else {
-		NewController->Possess(this);
+		SpawnInfo.ObjectFlags = RF_Transient;
+		m_AIController = GetWorld()->SpawnActor<AMyAIController>(AIControllerClass, GetActorLocation(), GetActorRotation(), SpawnInfo);
 	}
 
-	Controller = NewController;
-}
-
-AMyAIController* AEnemy::isAIControllerInUWorld() {
-	for (FConstControllerIterator it = GetWorld()->GetControllerIterator(); it; ++it)
-	{
-		AMyAIController* AIController = Cast<AMyAIController>(*it);
-		if (AIController) {
-			return AIController;
-		}
+	if (m_AIController != nullptr) {
+		m_AIController->Possess(this);
+		Controller = m_AIController;
 	}
-
-	return nullptr;
 }
 
 // Called when the game starts or when spawned
 void AEnemy::BeginPlay()
 {
 	Super::BeginPlay();
+	Setup();
 
 	ABubbleBobble_V2Character* mainCharacter = Cast<ABubbleBobble_V2Character>(GetWorld()->GetFirstPlayerController()->GetCharacter());
-
-	Setup();
-	//GetCapsuleComponent()->SetCapsuleHalfHeight(10.0f);
-
 	if (mainCharacter) {
 		m_TargetCharacter = mainCharacter;
-		m_SpawnLocation = m_TargetCharacter->GetActorLocation();
-		m_SpawnLocation.X -= HORIZONTAL_SPAWN_DISTANCE_FROM_CHARACTER;
 	}
 }
-
-// Called every frame
-void AEnemy::Tick(float DeltaTime)
-{
-	Super::Tick(DeltaTime);
-
-	if (!m_TargetCharacter) {
-		m_TargetCharacter = Cast<ABubbleBobble_V2Character>(GetWorld()->GetFirstPlayerController()->GetCharacter());
-		m_SpawnLocation = m_TargetCharacter->GetActorLocation();
-		m_SpawnLocation.X -= HORIZONTAL_SPAWN_DISTANCE_FROM_CHARACTER;
-	}
-
-	UpdateCharacter();
-	UpdateAnimation();
-}
-
-void AEnemy::UpdateAnimation() {
-	if (m_EnemyType == Normal) {
-		GetSprite()->SetFlipbook(m_NormalMovementAnim);
-	}
-	else {
-		GetSprite()->SetFlipbook(m_EnragedMovementAnim);
-	}
-}
-
-void AEnemy::UpdateCharacter()
-{
-	// Setup the rotation of the controller based on the direction we are traveling
-	const FVector PlayerVelocity = GetVelocity();
-	float TravelDirection = PlayerVelocity.X;
-	// Set the rotation so that the character faces his direction of travel.
-	if (Controller != nullptr)
-	{
-		if (TravelDirection < 0.0f)
-		{
-			Controller->SetControlRotation(FRotator(0.0, 180.0f, 0.0f));
-		}
-		else if (TravelDirection > 0.0f)
-		{
-			Controller->SetControlRotation(FRotator(0.0f, 0.0f, 0.0f));
-		}
-	}
-}
-
 
